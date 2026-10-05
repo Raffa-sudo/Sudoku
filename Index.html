@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sudoku</title>
+<style>
+:root{
+  --bg:#f4f1ea; --panel:#fff; --ink:#2b2b2b; --muted:#8a8578;
+  --line:#d8d2c2; --thick:#2b2b2b; --accent:#3b6e5e; --accent2:#c96f4a;
+  --fixed:#2b2b2b; --user:#3b6e5e; --err:#c96f4a; --sel:#eadfc4; --peer:#f1ecdd;
+  --note:#8a8578; --heart:#c96f4a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1b1a17; --panel:#242220; --ink:#eee8da; --muted:#9a9384;
+    --line:#3a372f; --thick:#eee8da; --accent:#7fb89e; --accent2:#e0916c;
+    --fixed:#eee8da; --user:#7fb89e; --err:#e0916c; --sel:#3c3826; --peer:#2c2a24;
+    --note:#9a9384; --heart:#e0916c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1b1a17; --panel:#242220; --ink:#eee8da; --muted:#9a9384;
+  --line:#3a372f; --thick:#eee8da; --accent:#7fb89e; --accent2:#e0916c;
+  --fixed:#eee8da; --user:#7fb89e; --err:#e0916c; --sel:#3c3826; --peer:#2c2a24;
+  --note:#9a9384; --heart:#e0916c;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Georgia',ui-serif,serif;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  display:flex; flex-direction:column; align-items:center;
+  min-height:100%; padding-left:16px; padding-right:16px;
+}
+h1{font-size:1.6rem; letter-spacing:0.08em; margin:20px 0 4px; font-weight:600;}
+.sub{color:var(--muted); font-size:0.85rem; margin-bottom:16px; text-align:center;}
+.panel{
+  background:var(--panel); border-radius:14px; padding:16px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.08); max-width:620px; width:100%; position:relative;
+}
+.toolbar{display:flex; gap:8px; justify-content:center; margin-bottom:10px; flex-wrap:wrap;}
+select,button{
+  font-family:inherit; font-size:0.85rem; border-radius:8px; border:1px solid var(--line);
+  background:var(--bg); color:var(--ink); padding:8px 12px; cursor:pointer;
+}
+button.primary{background:var(--accent); color:#fff; border-color:var(--accent);}
+button.active{background:var(--accent2); color:#fff; border-color:var(--accent2);}
+button:active{transform:translateY(1px);}
+.meta{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:0.9rem; flex-wrap:wrap; gap:6px;}
+.lives{display:flex; gap:3px; font-size:1.1rem; color:var(--heart);}
+.board-wrap{width:100%; overflow:auto;}
+#board{
+  display:grid; border:3px solid var(--thick); border-radius:6px;
+  background:var(--line); gap:1px; margin:0 auto;
+  width:100%; aspect-ratio:1/1; max-width:100%;
+}
+.cell{
+  background:var(--panel); display:flex; align-items:center; justify-content:center;
+  cursor:pointer; user-select:none; position:relative;
+  color:var(--user); font-weight:500; line-height:1;
+}
+.cell.fixed{color:var(--fixed); font-weight:700;}
+.cell.error{color:var(--err);}
+.cell.selected{background:var(--sel);}
+.cell.peer{background:var(--peer);}
+.notes{
+  display:flex; flex-wrap:wrap; align-content:center; justify-content:center;
+  width:100%; height:100%; position:absolute; top:0; left:0; overflow:hidden;
+}
+.notes span{ color:var(--note); line-height:1; padding:0 1px; }
+.pad{display:flex; flex-wrap:wrap; gap:5px; margin-top:14px; justify-content:center;}
+.pad button{flex:0 0 auto; min-width:34px; padding:8px 0; font-size:0.9rem;}
+.status{text-align:center; margin-top:10px; font-size:0.9rem; min-height:1.3em; color:var(--accent);}
+.status.bad{color:var(--err);}
+.overlay{
+  position:absolute; inset:0; background:rgba(0,0,0,0.55); border-radius:14px;
+  display:none; align-items:center; justify-content:center; flex-direction:column; gap:10px; z-index:5;
+}
+.overlay.show{display:flex;}
+.overlay p{color:#fff; font-size:1.2rem; margin:0; text-align:center; padding:0 16px;}
+footer{margin:16px 0; color:var(--muted); font-size:0.75rem;}
+</style>
+</head>
+<body>
+<h1>SUDOKU</h1>
+<div class="sub">tap a cell, then a number · notes for pencil marks · 9×9, 15×15, 20×20 or 25×25</div>
+<div class="panel">
+  <div class="toolbar">
+    <select id="size">
+      <option value="9">9 × 9 (Standard)</option>
+      <option value="15">15 × 15</option>
+      <option value="20" selected>20 × 20</option>
+      <option value="25">25 × 25</option>
+    </select>
+    <select id="diff">
+      <option value="0.55">Easy</option>
+      <option value="0.42" selected>Medium</option>
+      <option value="0.32">Hard</option>
+    </select>
+    <select id="livesMode">
+      <option value="inf" selected>Infinite lives</option>
+      <option value="3">3 lives</option>
+    </select>
+    <button class="primary" id="newGame">New Game</button>
+  </div>
+  <div class="meta">
+    <div id="livesWrap" class="lives" style="display:none;"></div>
+    <button id="notesToggle">✏️ Notes: Off</button>
+  </div>
+  <div class="board-wrap"><div id="board"></div></div>
+  <div class="pad" id="pad"></div>
+  <div class="toolbar" style="margin-top:10px;">
+    <button id="check">Check</button>
+    <button id="clearBtn">Erase</button>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="overlay" id="overlay"><p id="overlayText"></p><button class="primary" id="overlayBtn">New Game</button></div>
+</div>
+<footer>made for fun · no data leaves your browser</footer>
+<script>
+const boardEl = document.getElementById('board');
+const padEl = document.getElementById('pad');
+const statusEl = document.getElementById('status');
+const livesWrap = document.getElementById('livesWrap');
+const overlay = document.getElementById('overlay');
+const overlayText = document.getElementById('overlayText');
+
+let N=20, R=4, C=5;
+let puzzle=[], solution=[], fixed=[], notes=[], selected=null;
+let notesMode=false, lives=0, livesMax=0, gameOver=false;
+
+const BOX_DIMS = { 9:[3,3], 15:[3,5], 20:[4,5], 25:[5,5] };
+
+function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+
+function buildPermutation(n, groupSize){
+  const numGroups = n/groupSize;
+  const groups = [];
+  for(let g=0; g<numGroups; g++){
+    const idxs=[];
+    for(let i=0;i<groupSize;i++) idxs.push(g*groupSize+i);
+    shuffle(idxs);
+    groups.push(idxs);
+  }
+  shuffle(groups);
+  return groups.flat();
+}
+
+// Fast construction: base Latin-square pattern + band/stack shuffles + symbol relabeling.
+function generateSolved(n,r,c){
+  const pattern = (row,col) => (c*(row%r) + Math.floor(row/r) + col) % n;
+  const rowPerm = buildPermutation(n,r);
+  const colPerm = buildPermutation(n,c);
+  const symMap = shuffle(Array.from({length:n},(_,i)=>i+1));
+  const grid = [];
+  for(let i=0;i<n;i++){
+    const row=[];
+    for(let j=0;j<n;j++){
+      const v = pattern(rowPerm[i], colPerm[j]);
+      row.push(symMap[v]);
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+function makePuzzle(n,r,c,fraction){
+  const full = generateSolved(n,r,c);
+  const p = full.map(row=>row.slice());
+  const totalCells = n*n;
+  const clues = Math.round(totalCells*fraction);
+  let toRemove = totalCells - clues;
+  const positions = shuffle(Array.from({length:totalCells},(_,i)=>i));
+  for(const pos of positions){
+    if(toRemove<=0) break;
+    const rr=Math.floor(pos/n), cc=pos%n;
+    if(p[rr][cc]!==0){ p[rr][cc]=0; toRemove--; }
+  }
+  return {puzzle:p, solution:full};
+}
+
+function emptyNotes(n){ return Array.from({length:n},()=>Array.from({length:n},()=>new Set())); }
+
+function cellFontSize(){ return Math.max(7, Math.min(22, 240/N)) + 'px'; }
+function noteFontSize(){ return Math.max(5, Math.min(10, 110/N)) + 'px'; }
+
+function buildBoard(){
+  boardEl.innerHTML='';
+  boardEl.style.gridTemplateColumns = `repeat(${N}, 1fr)`;
+  boardEl.style.gridTemplateRows = `repeat(${N}, 1fr)`;
+  const fs = cellFontSize();
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      const d=document.createElement('div');
+      d.className='cell'+(fixed[r][c]?' fixed':'');
+      d.dataset.r=r; d.dataset.c=c;
+      d.style.fontSize=fs;
+      if((c+1)%C===0 && c!==N-1) d.style.borderRight='2px solid var(--thick)';
+      if((r+1)%R===0 && r!==N-1) d.style.borderBottom='2px solid var(--thick)';
+      d.addEventListener('click',()=>selectCell(r,c));
+      boardEl.appendChild(d);
+      renderCell(r,c);
+    }
+  }
+}
+
+function renderCell(r,c){
+  const el = boardEl.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+  el.classList.remove('error');
+  el.innerHTML='';
+  if(puzzle[r][c]!==0){
+    el.textContent = puzzle[r][c];
+  } else if(notes[r][c].size>0){
+    const wrap=document.createElement('div');
+    wrap.className='notes';
+    wrap.style.fontSize=noteFontSize();
+    [...notes[r][c]].sort((a,b)=>a-b).forEach(n=>{
+      const s=document.createElement('span');
+      s.textContent=n;
+      wrap.appendChild(s);
+    });
+    el.appendChild(wrap);
+  }
+}
+
+function buildPad(){
+  padEl.innerHTML='';
+  for(let n=1;n<=N;n++){
+    const b=document.createElement('button');
+    b.textContent=n;
+    b.addEventListener('click',()=>placeNumber(n));
+    padEl.appendChild(b);
+  }
+}
+
+function selectCell(r,c){
+  if(gameOver) return;
+  selected={r,c};
+  document.querySelectorAll('.cell').forEach(el=>{
+    const er=+el.dataset.r, ec=+el.dataset.c;
+    el.classList.toggle('selected', er===r&&ec===c);
+    el.classList.toggle('peer', (er===r||ec===c|| (Math.floor(er/R)===Math.floor(r/R)&&Math.floor(ec/C)===Math.floor(c/C))) && !(er===r&&ec===c));
+  });
+}
+
+function placeNumber(n){
+  if(gameOver) return;
+  if(!selected){ statusEl.textContent='select a cell first'; return; }
+  const {r,c}=selected;
+  if(fixed[r][c]) return;
+
+  if(notesMode){
+    if(puzzle[r][c]!==0) return;
+    if(notes[r][c].has(n)) notes[r][c].delete(n); else notes[r][c].add(n);
+    renderCell(r,c);
+    return;
+  }
+
+  puzzle[r][c]=n;
+  notes[r][c].clear();
+  statusEl.textContent=''; statusEl.classList.remove('bad');
+
+  if(livesMax>0 && n!==solution[r][c]){
+    lives--;
+    updateLives();
+    const el = boardEl.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+    el.classList.add('error');
+    if(lives<=0){
+      endGame(false);
+      renderCell(r,c);
+      return;
+    }
+  }
+  renderCell(r,c);
+  maybeWin();
+}
+
+function eraseSelected(){
+  if(gameOver || !selected) return;
+  const {r,c}=selected;
+  if(fixed[r][c]) return;
+  puzzle[r][c]=0;
+  notes[r][c].clear();
+  renderCell(r,c);
+}
+
+function maybeWin(){
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++) if(puzzle[r][c]!==solution[r][c]) return;
+  endGame(true);
+}
+
+function checkBoard(){
+  if(gameOver) return;
+  let complete=true, ok=true;
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+    const el = boardEl.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+    el.classList.remove('error');
+    if(puzzle[r][c]===0) complete=false;
+    else if(puzzle[r][c]!==solution[r][c]){ el.classList.add('error'); ok=false; }
+  }
+  if(!complete){ statusEl.textContent='keep going...'; statusEl.classList.remove('bad'); return; }
+  if(ok){ endGame(true); }
+  else { statusEl.textContent='a few numbers are off'; statusEl.classList.add('bad'); }
+}
+
+function updateLives(){
+  if(livesMax<=0){ livesWrap.style.display='none'; return; }
+  livesWrap.style.display='flex';
+  livesWrap.textContent = '♥'.repeat(Math.max(lives,0)) + '♡'.repeat(livesMax-Math.max(lives,0));
+}
+
+function endGame(won){
+  gameOver=true;
+  overlay.classList.add('show');
+  overlayText.textContent = won ? 'Solved! Well played.' : 'Out of lives — better luck next time.';
+}
+
+document.getElementById('notesToggle').addEventListener('click',(e)=>{
+  notesMode=!notesMode;
+  e.target.textContent = notesMode ? '✏️ Notes: On' : '✏️ Notes: Off';
+  e.target.classList.toggle('active', notesMode);
+});
+document.getElementById('newGame').addEventListener('click',newGame);
+document.getElementById('overlayBtn').addEventListener('click',newGame);
+document.getElementById('check').addEventListener('click',checkBoard);
+document.getElementById('clearBtn').addEventListener('click',eraseSelected);
+document.addEventListener('keydown',(e)=>{
+  if(N===9 && e.key>='1' && e.key<='9') placeNumber(+e.key);
+  if(e.key==='Backspace'||e.key==='Delete') eraseSelected();
+});
+
+function newGame(){
+  const size = +document.getElementById('size').value;
+  N = size;
+  [R,C] = BOX_DIMS[size];
+  const fraction = +document.getElementById('diff').value;
+  const mode = document.getElementById('livesMode').value;
+  livesMax = mode==='3' ? 3 : 0;
+  lives = livesMax;
+
+  const res = makePuzzle(N,R,C,fraction);
+  puzzle = res.puzzle;
+  solution = res.solution;
+  fixed = puzzle.map(row=>row.map(v=>v!==0));
+  notes = emptyNotes(N);
+  selected=null;
+  gameOver=false;
+  overlay.classList.remove('show');
+  statusEl.textContent=''; statusEl.classList.remove('bad');
+  updateLives();
+  buildPad();
+  buildBoard();
+  statusEl.textContent = `${N}×${N} · boxes are ${R}×${C}`;
+}
+
+newGame();
+</script>
+</body>
+</html>
